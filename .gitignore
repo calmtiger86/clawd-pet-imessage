@@ -1,0 +1,8 @@
+.env
+__pycache__/
+*.pyc
+logs/
+state.json
+state.json.backup
+venv/
+.DS_Store
