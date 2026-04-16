@@ -195,11 +195,12 @@ def _polling_loop(state_machine: PetStateMachine) -> None:
         for rowid, phone, text in (messages or []):
             last_rowid = rowid
 
-            # separate 모드: 등록된 수신자의 메시지만 처리
-            if not same_number_mode and RECIPIENT_PHONE and phone != RECIPIENT_PHONE:
+            # 발신자 필터: same/separate 모드 공통 — RECIPIENT_PHONE만 처리
+            # (iWanted 등 다른 서비스의 메시지와 분리)
+            if RECIPIENT_PHONE and phone != RECIPIENT_PHONE:
                 continue
 
-            # same 모드: 에코 필터링
+            # same 모드: 에코 필터링 (봇이 보낸 메시지 제외)
             if same_number_mode and is_echo(text):
                 continue
 
