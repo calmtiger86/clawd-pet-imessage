@@ -82,16 +82,8 @@ if [ -z "$PHONE" ]; then
     done
 fi
 
-# ── 4. DRY_RUN 모드 ──
-echo ""
-echo "테스트 모드(DRY_RUN)를 활성화하면 실제 메시지를 보내지 않고"
-echo "로그에만 기록합니다. 처음 설치 시 권장합니다."
-read -p "테스트 모드로 시작할까요? (Y/n): " DRY
-if [[ "$DRY" == "n" || "$DRY" == "N" ]]; then
-    DRY_RUN="false"
-else
-    DRY_RUN="true"
-fi
+# ── 4. DRY_RUN — 첫 설치는 항상 테스트 모드로 시작 ──
+DRY_RUN="true"
 
 # ── 5. Permission Request 설정 ──
 echo ""
@@ -197,7 +189,7 @@ else
     echo "⏭️  Hook 등록 건너뜀 (나중에 python3 hooks/install.py 로 등록 가능)"
 fi
 
-# ── 8. macOS 권한 안내 ──
+# ── 9. macOS 권한 안내 ──
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo "  ⚠️  macOS 권한 확인 (최초 1회)"
@@ -211,15 +203,105 @@ echo "  2. Automation (메시지 발송용)"
 echo "     처음 실행 시 '메시지 앱 제어' 허용 팝업이 뜹니다."
 echo ""
 
-# ── 9. 완료 ──
+# ── 10. DRY_RUN 자동 테스트 ──
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "  🧪 DRY_RUN 연결 테스트"
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo ""
+echo "  실제 iMessage를 보내지 않고 서버 연결을 테스트합니다..."
+echo ""
+
+LOG_FILE="/tmp/pet-dryrun-test.log"
+rm -f "$LOG_FILE"
+
+# 봇 백그라운드 시작
+python3 main.py > "$LOG_FILE" 2>&1 &
+BOT_PID=$!
+
+# 서버 기동 대기 (최대 5초)
+SERVER_OK=0
+for i in {1..10}; do
+    sleep 0.5
+    if curl -s "http://127.0.0.1:23456/state" --max-time 1 -o /dev/null 2>/dev/null; then
+        SERVER_OK=1
+        break
+    fi
+done
+
+if [[ "$SERVER_OK" == "1" ]]; then
+    echo "  ✓ HTTP 서버 시작됨 (port 23456)"
+
+    # SessionStart 이벤트 전송
+    RESP=$(curl -s -X POST "http://127.0.0.1:23456/state" \
+        -H "Content-Type: application/json" \
+        -d '{"event":"SessionStart","payload":{}}' \
+        --max-time 3 2>/dev/null)
+
+    sleep 0.5
+
+    # PreToolUse 이벤트 전송
+    curl -s -X POST "http://127.0.0.1:23456/state" \
+        -H "Content-Type: application/json" \
+        -d '{"event":"PreToolUse","payload":{}}' \
+        --max-time 3 > /dev/null 2>/dev/null
+
+    sleep 0.5
+
+    if echo "$RESP" | grep -q '"ok"'; then
+        echo "  ✓ 이벤트 수신 및 상태 전환 정상"
+    else
+        echo "  ⚠️  이벤트 응답 이상: $RESP"
+    fi
+
+    echo ""
+    echo "  📋 봇 로그 (마지막 5줄):"
+    echo "  ─────────────────────────────────────────"
+    tail -5 "$LOG_FILE" 2>/dev/null | sed 's/^/     /'
+    echo "  ─────────────────────────────────────────"
+    echo ""
+    echo "  ✅ DRY_RUN 테스트 완료 — 로그에만 기록되었습니다."
+else
+    echo "  ⚠️  서버가 응답하지 않습니다."
+    echo "  로그:"
+    cat "$LOG_FILE" 2>/dev/null | tail -5 | sed 's/^/     /'
+    echo ""
+    echo "  설치 후 수동으로 ./start.sh 를 실행해 확인하세요."
+fi
+
+# 테스트 봇 종료
+kill "$BOT_PID" 2>/dev/null
+wait "$BOT_PID" 2>/dev/null
+
+# ── 11. 실제 발송 전환 선택 ──
+echo ""
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "  📱 실제 iMessage 발송 전환"
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo ""
+echo "  현재: DRY_RUN=true (로그 전용)"
+echo ""
+echo "  실제 발송으로 전환하면 Claude Code 작업 시"
+echo "  ${PHONE} 번호로 GIF + 메시지가 전송됩니다."
+echo ""
+read -p "실제 iMessage 발송 모드로 전환할까요? (y/N): " SWITCH_LIVE
+
+if [[ "$SWITCH_LIVE" == "y" || "$SWITCH_LIVE" == "Y" ]]; then
+    sed -i '' 's/^DRY_RUN=true/DRY_RUN=false/' .env
+    DRY_RUN="false"
+    echo ""
+    echo "  ✓ DRY_RUN=false — 실제 iMessage 발송 모드로 전환되었습니다."
+else
+    echo ""
+    echo "  ✓ DRY_RUN=true 유지 — 로그만 기록됩니다."
+    echo "  💡 나중에 전환하려면: setup.sh 재실행 또는 .env에서 DRY_RUN=false"
+fi
+
+# ── 12. 완료 ──
+echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo "  🎉 설치 완료!"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
-echo "  실행:    ./start.sh"
-echo "  테스트:  DRY_RUN=$DRY_RUN"
-if [ "$DRY_RUN" == "true" ]; then
-    echo ""
-    echo "  💡 실제 발송하려면 .env에서 DRY_RUN=false로 변경하세요."
-fi
+echo "  실행:   ./start.sh"
+echo "  모드:   DRY_RUN=$DRY_RUN"
 echo ""
