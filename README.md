@@ -1,5 +1,7 @@
 # clawd-pet-imessage 🦀
 
+**English** | **[한국어](README.ko.md)**
+
 An iMessage bot that sends your iPhone pixel-art GIF reactions whenever Claude Code is working. Inspired by [clawd-on-desk](https://github.com/rullerzhou-afk/clawd-on-desk).
 
 ---
@@ -108,7 +110,7 @@ When you send messages to your own number, `chat.db` records both sent and recei
 ## Installation
 
 ```bash
-git clone https://github.com/<user>/clawd-pet-imessage
+git clone https://github.com/calmtiger86/clawd-pet-imessage
 cd clawd-pet-imessage
 ./setup.sh
 ```
